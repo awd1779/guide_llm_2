@@ -1,0 +1,214 @@
+% ==========================================================================
+% References for Guide-LLM v2: Fine-tuned Local LLM for Assistive Navigation
+% ==========================================================================
+
+% --- Standards & Design Guidelines ---
+
+@techreport{wayfindr2018,
+  title     = {Open Standard for Audio-based Wayfinding, Recommendation 2.0},
+  author    = {{Wayfindr}},
+  institution = {International Telecommunication Union},
+  year      = {2018},
+  note      = {ITU-T Recommendation F.921: Audio-based indoor and outdoor network
+               navigation system for persons with vision impairment},
+  url       = {https://www.wayfindr.net/open-standard},
+}
+
+% --- Spatial Cognition & Representation ---
+
+@article{fortin2008,
+  author  = {Fortin, Madeleine and Voss, Patrice and Lord, Catherine and
+             Lassonde, Maryse and Pruessner, Jens and Saint-Amour, Dave and
+             Rainville, Constant and Lepore, Franco},
+  title   = {Wayfinding in the blind: larger hippocampal volume and
+             supranormal spatial navigation},
+  journal = {Brain},
+  year    = {2008},
+  volume  = {131},
+  number  = {11},
+  pages   = {2995--3005},
+  doi     = {10.1093/brain/awn250},
+  pmid    = {18854327},
+}
+
+@article{hersh2022,
+  author  = {Hersh, Marion and Ramirez, Alejandra R. Gomez},
+  title   = {Route Descriptions, Spatial Knowledge and Spatial Representations
+             of Blind and Partially Sighted People: Improved Design of
+             Electronic Travel Aids},
+  journal = {ACM Transactions on Accessible Computing},
+  year    = {2022},
+  volume  = {15},
+  number  = {4},
+  pages   = {1--46},
+  doi     = {10.1145/3549077},
+}
+
+@article{jeamwatthanachai2019,
+  author  = {Jeamwatthanachai, Watthanasak and Wald, Mike and Wills, Gary},
+  title   = {Indoor navigation by blind people: behaviors and challenges
+             in unfamiliar spaces and buildings},
+  journal = {British Journal of Visual Impairment},
+  year    = {2019},
+  volume  = {37},
+  number  = {2},
+  pages   = {140--153},
+  doi     = {10.1177/0264619619833723},
+}
+
+% --- LLM-Based Assistive Navigation Systems ---
+
+@article{song2024guidellm,
+  author  = {Song, Sangmim and Kodagoda, Sarath and Gunatilake, Amal and
+             Carmichael, Marc G. and Thiyagarajan, Karthick and Martin, Jodi},
+  title   = {Guide-{LLM}: An Embodied {LLM} Agent and Text-Based Topological
+             Map for Robotic Guidance of People with Visual Impairments},
+  journal = {arXiv preprint arXiv:2410.20666},
+  year    = {2024},
+  eprint  = {2410.20666},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.RO},
+}
+
+@article{kaniwa2024,
+  author  = {Kaniwa, Yuka and Kuribayashi, Masaki and Kayukawa, Seita and
+             Sato, Daisuke and Takagi, Hironobu and Asakawa, Chieko and
+             Morishima, Shigeo},
+  title   = {{ChitChatGuide}: Conversational Interaction Using Large Language
+             Models for Assisting People with Visual Impairments to Explore
+             a Shopping Mall},
+  journal = {Proceedings of the ACM on Human-Computer Interaction},
+  year    = {2024},
+  volume  = {8},
+  number  = {MHCI},
+  pages   = {1--25},
+  doi     = {10.1145/3676492},
+}
+
+@article{tokmurziyev2025,
+  author  = {Tokmurziyev, Issatay and Altamirano Cabrera, Miguel and
+             Khan, Muhammad Haris and Mahmoud, Yara and Moreno, Luis and
+             Tsetserukou, Dzmitry},
+  title   = {{LLM-Glasses}: {GenAI}-driven Glasses with Haptic Feedback for
+             Navigation of Visually Impaired People},
+  journal = {arXiv preprint arXiv:2503.16475},
+  year    = {2025},
+  eprint  = {2503.16475},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.HC},
+}
+
+% --- Spatial Language & Route Descriptions ---
+
+@phdthesis{nicholson2010,
+  author = {Nicholson, John},
+  title  = {Generation and Analysis of Verbal Route Directions for
+            Blind Navigation},
+  school = {Utah State University},
+  year   = {2010},
+  note   = {Doctoral dissertation},
+}
+
+@inproceedings{kattenbeck2019,
+  author    = {Kattenbeck, Markus and Giannopoulos, Ioannis and Str{\"o}le,
+               Alexander and Raubal, Martin},
+  title     = {Modelling the Creation of Verbal Indoor Route Descriptions
+               for Visually Impaired Travellers},
+  booktitle = {Spatial Information Theory (COSIT 2019)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {11474},
+  pages     = {1--17},
+  publisher = {Springer},
+  year      = {2019},
+  doi       = {10.1007/978-3-030-16450-8_15},
+}
+
+% --- Guide Robot Design ---
+
+@article{guideRobot2025,
+  author  = {{(Authors from ACM THRI 2025)}},
+  title   = {A Multi-Method Investigation of Guide Robot Characteristics
+             for Blind and Low-Vision Users},
+  journal = {ACM Transactions on Human-Robot Interaction},
+  year    = {2025},
+  doi     = {10.1145/3750054},
+  note    = {Investigates robot behaviors and features preferred by BLV users,
+             including verbosity preferences and turn feedback},
+}
+
+% --- Fine-tuning LLMs for Tool/Function Calling ---
+
+@online{hf_xlam_finetune,
+  author = {{Hugging Face}},
+  title  = {Fine-tuning {LLMs} for Function Calling with {xLAM} Dataset},
+  year   = {2024},
+  url    = {https://huggingface.co/learn/cookbook/function_calling_fine_tuning_llms_on_xlam},
+  note   = {Open-source cookbook for LoRA fine-tuning on function calling},
+}
+
+@online{ms_slm_function_calling,
+  author = {{Microsoft}},
+  title  = {Fine-Tuning Small Language Models for Function Calling:
+            A Comprehensive Guide},
+  year   = {2024},
+  url    = {https://techcommunity.microsoft.com/blog/machinelearningblog/fine-tuning-small-language-models-for-function-calling-a-comprehensive-guide/4362539},
+}
+
+% --- Additional Related Work ---
+
+@article{finetune_vlm_nav2025,
+  author  = {{(Authors from arXiv 2509.07488)}},
+  title   = {Fine-Tuning Vision-Language Models for Visual Navigation
+             Assistance},
+  journal = {arXiv preprint arXiv:2509.07488},
+  year    = {2025},
+  eprint  = {2509.07488},
+  archiveprefix = {arXiv},
+  note    = {Uses LoRA fine-tuning on BLIP-2 for indoor navigation
+             instruction generation},
+}
+
+@inproceedings{memorymaze2024,
+  author    = {{(Authors from arXiv 2405.07060)}},
+  title     = {Memory-Maze: Scenario Driven Visual Language Navigation
+               Benchmark for Guiding Blind People},
+  year      = {2024},
+  eprint    = {2405.07060},
+  archiveprefix = {arXiv},
+  note      = {VLN benchmark specifically designed for blind navigation
+               scenarios},
+}
+
+@article{hersh2020mentalmaps,
+  author  = {Hersh, Marion and Ramirez, Alejandra R. Gomez},
+  title   = {Mental Maps and the Use of Sensory Information by Blind and
+             Partially Sighted People},
+  journal = {ACM Transactions on Accessible Computing},
+  year    = {2020},
+  volume  = {13},
+  number  = {2},
+  pages   = {1--32},
+  doi     = {10.1145/3375279},
+}
+
+@inproceedings{objectfinder2024,
+  author    = {{(Authors from arXiv 2412.03118)}},
+  title     = {{ObjectFinder}: An Open-Vocabulary Assistive System for
+               Interactive Object Search by Blind People},
+  year      = {2024},
+  eprint    = {2412.03118},
+  archiveprefix = {arXiv},
+  note      = {Open-vocabulary object search system for blind users,
+               relevant to our find\_nearest tool design},
+}
+
+@article{navreview2024,
+  author  = {{(Authors from ScienceDirect)}},
+  title   = {A Comprehensive Review of Navigation Systems for Visually
+             Impaired Individuals},
+  journal = {Heliyon},
+  year    = {2024},
+  doi     = {10.1016/j.heliyon.2024.e30756},
+  note    = {Comprehensive survey covering assistive navigation technologies,
+             user needs, and evaluation methodologies},
+}

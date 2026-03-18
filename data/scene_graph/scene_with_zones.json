@@ -1,0 +1,472 @@
+{
+  "metadata": {
+    "created": "2026-03-17T00:29:47.535492",
+    "world_axes": "xz",
+    "alignment": {
+      "translate_x": -2.9133,
+      "translate_y": 2.6299,
+      "rotate_deg": -2.31,
+      "scale": 1.0
+    },
+    "num_objects": 12,
+    "num_zones": 7
+  },
+  "objects": [
+    {
+      "id": 16,
+      "label": "black chair",
+      "centroid": {
+        "x": -3.003518048308222,
+        "y": 0.0,
+        "z": -7.224096427825759
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "hri_lab",
+        "parent_zone": null,
+        "full_path": "hri_lab"
+      }
+    },
+    {
+      "id": 17,
+      "label": "chair",
+      "centroid": {
+        "x": 5.4098749806945055,
+        "y": 0.0,
+        "z": 9.921669874242365
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "kitchen_area",
+        "parent_zone": null,
+        "full_path": "kitchen_area"
+      }
+    },
+    {
+      "id": 19,
+      "label": "table",
+      "centroid": {
+        "x": 5.103748722872986,
+        "y": 0.0,
+        "z": 10.358129815646242
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "kitchen_area",
+        "parent_zone": null,
+        "full_path": "kitchen_area"
+      }
+    },
+    {
+      "id": 20,
+      "label": "microwave",
+      "centroid": {
+        "x": 8.33611789750816,
+        "y": 0.0,
+        "z": 10.719994323260266
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "kitchen_area",
+        "parent_zone": null,
+        "full_path": "kitchen_area"
+      }
+    },
+    {
+      "id": 21,
+      "label": "fridge",
+      "centroid": {
+        "x": 4.843960122792683,
+        "y": 0.0,
+        "z": 7.0252806967819135
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "kitchen_area",
+        "parent_zone": null,
+        "full_path": "kitchen_area"
+      }
+    },
+    {
+      "id": 22,
+      "label": "elevator",
+      "centroid": {
+        "x": -11.42270803870425,
+        "y": 0.0,
+        "z": 12.471198594011138
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "elevator_area",
+        "parent_zone": null,
+        "full_path": "elevator_area"
+      }
+    },
+    {
+      "id": 23,
+      "label": "elevator",
+      "centroid": {
+        "x": -13.590632329934865,
+        "y": 0.0,
+        "z": 9.839161405291797
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "elevator_area",
+        "parent_zone": null,
+        "full_path": "elevator_area"
+      }
+    },
+    {
+      "id": 25,
+      "label": "TV",
+      "centroid": {
+        "x": 3.780248751785995,
+        "y": 0.0,
+        "z": -8.931654848650858
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "hri_lab",
+        "parent_zone": null,
+        "full_path": "hri_lab"
+      }
+    },
+    {
+      "id": 26,
+      "label": "chair",
+      "centroid": {
+        "x": -1.9966033698711922,
+        "y": 0.0,
+        "z": -8.40629731208546
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "hri_lab",
+        "parent_zone": null,
+        "full_path": "hri_lab"
+      }
+    },
+    {
+      "id": 27,
+      "label": "chair",
+      "centroid": {
+        "x": -0.3589394865187938,
+        "y": 0.0,
+        "z": -9.811637126187806
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "hri_lab",
+        "parent_zone": null,
+        "full_path": "hri_lab"
+      }
+    },
+    {
+      "id": 28,
+      "label": "box",
+      "centroid": {
+        "x": -2.011632488416663,
+        "y": 0.0,
+        "z": -6.481559081861103
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": "hri_lab",
+        "parent_zone": null,
+        "full_path": "hri_lab"
+      }
+    },
+    {
+      "id": 29,
+      "label": "sink",
+      "centroid": {
+        "x": 6.21878029142086,
+        "y": 0.0,
+        "z": 8.160238828792878
+      },
+      "confidence": 1.0,
+      "num_points": 100,
+      "manually_added": true,
+      "location": {
+        "zone": null,
+        "parent_zone": null,
+        "full_path": null
+      }
+    }
+  ],
+  "zones": [
+    {
+      "name": "kitchen_area",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -2.6833,
+          9.3639
+        ],
+        [
+          -0.2266,
+          6.9072
+        ],
+        [
+          6.2627,
+          13.2575
+        ],
+        [
+          3.1107,
+          15.1115
+        ],
+        [
+          -2.5442,
+          9.4566
+        ]
+      ],
+      "objects": [
+        {
+          "id": 17,
+          "label": "chair"
+        },
+        {
+          "id": 19,
+          "label": "table"
+        },
+        {
+          "id": 20,
+          "label": "microwave"
+        },
+        {
+          "id": 21,
+          "label": "fridge"
+        }
+      ]
+    },
+    {
+      "name": "hallway_1",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -0.7828,
+          5.2386
+        ],
+        [
+          0.376,
+          6.212
+        ],
+        [
+          -11.3511,
+          17.9854
+        ],
+        [
+          -12.4635,
+          16.5948
+        ],
+        [
+          -0.8755,
+          5.424
+        ]
+      ],
+      "objects": []
+    },
+    {
+      "name": "toilet",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -9.3579,
+          5.8411
+        ],
+        [
+          -10.0996,
+          5.0532
+        ],
+        [
+          -7.4575,
+          2.7356
+        ],
+        [
+          -6.7622,
+          3.709
+        ],
+        [
+          -9.2652,
+          5.8875
+        ]
+      ],
+      "objects": []
+    },
+    {
+      "name": "hri_lab",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -8.2455,
+          -5.4224
+        ],
+        [
+          -1.8953,
+          1.4377
+        ],
+        [
+          4.0378,
+          -2.5949
+        ],
+        [
+          -2.6833,
+          -10.382
+        ],
+        [
+          -8.5236,
+          -5.4224
+        ]
+      ],
+      "objects": [
+        {
+          "id": 16,
+          "label": "black chair"
+        },
+        {
+          "id": 25,
+          "label": "TV"
+        },
+        {
+          "id": 26,
+          "label": "chair"
+        },
+        {
+          "id": 27,
+          "label": "chair"
+        },
+        {
+          "id": 28,
+          "label": "box"
+        }
+      ]
+    },
+    {
+      "name": "hallway_0",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          0.3296,
+          6.1656
+        ],
+        [
+          1.6275,
+          5.0068
+        ],
+        [
+          -10.424,
+          -7.5082
+        ],
+        [
+          -11.7219,
+          -6.1177
+        ],
+        [
+          0.3296,
+          6.212
+        ]
+      ],
+      "objects": []
+    },
+    {
+      "name": "hallway_toilet",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -14.7348,
+          9.8274
+        ],
+        [
+          -15.8472,
+          8.8077
+        ],
+        [
+          -10.7485,
+          4.4506
+        ],
+        [
+          -9.8678,
+          5.4703
+        ],
+        [
+          -14.8275,
+          9.9665
+        ]
+      ],
+      "objects": []
+    },
+    {
+      "name": "elevator_area",
+      "parent": null,
+      "depth": 0,
+      "children": [],
+      "vertices_world": [
+        [
+          -12.927,
+          16.6412
+        ],
+        [
+          -23.4026,
+          5.1459
+        ],
+        [
+          -21.5485,
+          2.8746
+        ],
+        [
+          -10.5167,
+          14.2309
+        ],
+        [
+          -12.927,
+          16.7339
+        ]
+      ],
+      "objects": [
+        {
+          "id": 22,
+          "label": "elevator"
+        },
+        {
+          "id": 23,
+          "label": "elevator"
+        }
+      ]
+    }
+  ]
+}

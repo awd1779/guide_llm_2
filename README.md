@@ -1,8 +1,63 @@
-# Guide-LLM
+# Guide-LLM v2: Edge LLM Navigation for Vision-Impaired Users
 
-LLM-driven navigation agent for vision-impaired users using semantic scene graph + Claude tool_use + Nav2.
+LLM-driven navigation agent for vision-impaired users using semantic scene graphs + tool calling + Nav2.
 
-> Based on [Guide-LLM](https://arxiv.org/abs/2410.20666) by Sangmim Song et al.
+**Two deployment paths:**
+- **Cloud**: Claude API (via `scene_graph_agent.py`)
+- **Edge**: Fine-tuned Qwen 3.5 4B (via `scene_graph_agent_local.py` + local vLLM/Ollama/NIM server)
+
+> **Version 2 of Guide-LLM** – Adds local fine-tuned LLM with edge deployment
+>
+> Based on [Guide-LLM v1](https://arxiv.org/abs/2410.20666) by Sangmim Song et al. (published Oct 2024)
+>
+> **Status**: Code + training pipeline complete (Mar 2026)
+
+## Quick Start
+
+### Option 1: Cloud Deployment (Claude API)
+
+```bash
+# 1. Start scene graph publisher
+python3 scene_graph_publisher.py \
+    --scene-graph data/scene_graph/scene_graph.json \
+    --load-zones data/scene_graph/location_zones.json \
+    --frame-id map --world-axes xz
+
+# 2. Start agent
+export ANTHROPIC_API_KEY=sk-...
+python3 scene_graph_agent.py --model claude-sonnet-4-6
+```
+
+### Option 2: Edge Deployment (Local Fine-Tuned Qwen 3.5)
+
+```bash
+# 1. Fine-tune Qwen 3.5 4B on your dataset
+python3 finetune/finetune_qwen.py --model-size 4b --epochs 3
+
+# 2. Start local LLM server (using vLLM)
+python -m vllm.entrypoints.openai.api_server \
+    --model finetune/output/qwen3.5-4b-toolcall/checkpoint-223 \
+    --port 8000
+
+# 3. Start scene graph publisher (same as above)
+python3 scene_graph_publisher.py ...
+
+# 4. Start agent with local LLM
+python3 scene_graph_agent_local.py --base-url http://localhost:8000/v1
+```
+
+See **[finetune/README.md](finetune/README.md)** for detailed training instructions.
+
+---
+
+## Documentation
+
+- **[research/RESEARCH_AND_PUBLICATION.md](research/RESEARCH_AND_PUBLICATION.md)** – Publication strategy & novelty claims
+- **[research/design/SYSTEM_DESIGN.md](research/design/SYSTEM_DESIGN.md)** – System architecture details
+- **[finetune/README.md](finetune/README.md)** – Training pipeline guide
+- **[research/README.md](research/README.md)** – Full documentation index
+
+---
 
 ## Architecture
 
@@ -11,36 +66,54 @@ LLM-driven navigation agent for vision-impaired users using semantic scene graph
                           │
  (external voice I/O)     │
                           ▼
-User (voice/terminal) ──▶ scene_graph_agent.py ──▶ Claude API (tool_use)
-                                  │  ▲                      │
-                                  │  │                      ▼
-                           ┌──────┴──┴──────┐        14 tool calls
-                           │ scene_graph    │       (navigate, query,
-                           │ _publisher.py  │        list, spatial,
-                           │                │        describe, orient,
-                           │                │        cancel, status)
-                           │ /objects       │              │
-                           │ /zones         │              ▼
-                           └────────────────┘        tool results
-                                  │                  back to Claude
-                           ┌──────┴─────┐                 │
-                           │ LiDAR SLAM │                 ▼
-                           │ TF: map →  │         natural language
-                           │ base_link  │           response
-                           └────────────┘                 │
-                                  │                       ▼
-                           ┌──────┴─────┐      /speech_feedback (String)
-                           │   Nav2     │◀── /goal_pose (PoseStamped)
-                           │ (planner)  │──▶ /navigate_to_pose status
-                           └────────────┘◀── /cmd_vel (Twist, zero-vel stop)
+                 ┌─ scene_graph_agent.py ─────┐
+                 │                             │
+                 ▼                             ▼
+          Claude API                   Local LLM
+         (cloud-based)          (vLLM/Ollama/NIM)
+                 │                             │
+                 └─────────────┬───────────────┘
+                               │
+                               ▼ (14 tool calls)
+                    ┌──────────────────────┐
+                    │  scene_graph         │
+                    │  _publisher.py       │
+                    │                      │
+                    │ /objects /zones      │
+                    └────────┬─────────────┘
+                             │
+                    ┌────────┴──────────┐
+                    │                   │
+                    ▼                   ▼
+              LiDAR SLAM           Tool Results
+              (TF lookup)          (back to LLM)
+                    │                   │
+                    ▼                   ▼
+                  Nav2 ◀────────── Natural Language
+              (path planner)          Response
+                    │                   │
+                    ▼                   ▼
+              /goal_pose      /speech_feedback
+              /navigate_to_pose/_action/*
+              /cmd_vel (for stop)
 ```
+
+**Two Deployment Options:**
+
+| Path | Script | Model |
+|------|--------|-------|
+| **Cloud** | `scene_graph_agent.py` | Claude 3.5 Sonnet |
+| **Edge** | `scene_graph_agent_local.py` | Qwen 3.5 4B (fine-tuned) |
 
 ## Components
 
 | File | Purpose |
 |------|---------|
-| `scene_graph_agent.py` | Claude tool_use agent — 14 tools, TF pose lookup, Nav2 goals + status, voice + terminal I/O |
+| `scene_graph_agent.py` | Claude API agent — 14 tools, TF pose lookup, Nav2 goals + status, voice + terminal I/O |
+| `scene_graph_agent_local.py` | Local LLM agent (Qwen 3.5 4B) — same 14 tools, OpenAI-compatible API endpoint |
 | `scene_graph_publisher.py` | Publishes objects + zones from pre-built scene graph as RViz markers + JSON topics |
+| `finetune/finetune_qwen.py` | Fine-tune Qwen 3.5 4B/9B on tool-calling dataset using Unsloth (16-bit LoRA) |
+| `finetune/generate_dataset.py` | Generate synthetic tool-calling training data in OpenAI chat format (JSONL) |
 
 ## Claude Tools (14)
 
@@ -66,10 +139,8 @@ User (voice/terminal) ──▶ scene_graph_agent.py ──▶ Claude API (tool_
 |------|-------|--------|-------------|
 | `navigate_to_zone` | zone_name | success, goal position | Computes zone centroid from polygon vertices, publishes PoseStamped to `/goal_pose`. |
 | `navigate_to_object` | object_label | success, goal position | Looks up object map position, publishes PoseStamped to `/goal_pose`. |
-| `cancel_navigation` | — | success | Cancels active navigation and journey. Publishes zero-velocity Twist to `/cmd_vel` for immediate stop, then calls Nav2's cancel service. |
-| `navigate_waypoint_journey` | destination (string or array) | waypoints, stops, zone_path | Plans and executes a multi-zone waypoint journey. Accepts a single destination or a list for multi-stop trips (e.g. `["kitchen", "elevator", "lobby"]`). Auto-advances through waypoints, pauses 2s at intermediate stops. |
-| `get_journey_status` | — | status, progress, stops, narration | Returns current journey progress including waypoint index, stop info (e.g. "stop 2 of 3: kitchen"), and narration text. |
 | `get_navigation_status` | — | status, destination, message | Checks Nav2 action status. Returns: `navigating`, `arrived`, `failed`, `canceled`, or `idle`. |
+| `cancel_navigation` | — | success | Cancels active navigation. Publishes zero-velocity Twist to `/cmd_vel` for immediate stop, then calls Nav2's cancel service. |
 
 ### Scene Graph Query
 
@@ -91,19 +162,11 @@ User (voice/terminal) ──▶ scene_graph_agent.py ──▶ Claude API (tool_
 
 "take me to the kitchen"
   → list_zones()                                # find exact name
-  → navigate_waypoint_journey("kitchen_area")   # multi-zone waypoint journey
-  → Claude: "Route planned through the hallway — 5 waypoints. Let's go!"
-
-"take me to the kitchen, then the elevator"
-  → navigate_waypoint_journey(["kitchen_area", "elevator_area"])
-  → Claude: "Multi-stop route planned — kitchen then elevator, 8 waypoints."
-
-"are we there yet?"
-  → get_journey_status()
-  → Claude: "We're 60% there — entering the kitchen now (stop 1 of 2)."
+  → navigate_to_zone("kitchen_area")            # navigate to zone
+  → Claude: "I've set the route to the kitchen. Let's go!"
 
 "stop"
-  → cancel_navigation()              # publishes zero-velocity Twist + Nav2 cancel
+  → cancel_navigation()                        # publishes zero-velocity Twist + Nav2 cancel
   → Claude: "Done, I've stopped the robot."
 
 "where's the nearest chair?"
@@ -129,56 +192,84 @@ User (voice/terminal) ──▶ scene_graph_agent.py ──▶ Claude API (tool_
   → Claude: "Turning 45 degrees to the right to face the kitchen."
 ```
 
-## Quick Start
+## Detailed Setup (All Platforms)
 
 All commands assume you're in the `guide-llm/` directory.
 
-### 1. Map server
+### Prerequisites
 
-```bash
-ros2 run nav2_map_server map_server --ros-args \
-    -p yaml_filename:=$(pwd)/data/maps/level_12_v5.yaml
-ros2 lifecycle set /map_server configure
-ros2 lifecycle set /map_server activate
-```
+- **ROS 2** (tested on Humble, Jazzy)
+- **Nav2** stack
+- **Python 3.10+**
+- **For Cloud deployment**: `anthropic` SDK
+- **For Edge deployment**: `torch`, `transformers>=5.0`, `unsloth`, `vllm` (see `finetune/README.md`)
 
-### 2. Scene graph publisher
+### Standard Setup Steps
 
-```bash
-python3 scene_graph_publisher.py \
-    --scene-graph data/scene_graph/scene_graph.json \
-    --load-offset data/scene_graph/map_offset.json \
-    --load-zones data/scene_graph/location_zones.json \
-    --frame-id map --world-axes xz
-```
+1. **Start ROS 2 core**
+   ```bash
+   ros2 daemon stop && sleep 1
+   ```
 
-### 3. Agent
+2. **Launch Nav2 map server** (terminal 1)
+   ```bash
+   ros2 run nav2_map_server map_server --ros-args \
+       -p yaml_filename:=$(pwd)/data/maps/level_12_v5.yaml
+   ros2 lifecycle set /map_server configure
+   ros2 lifecycle set /map_server activate
+   ```
 
-```bash
-export ANTHROPIC_API_KEY=sk-...
-python3 scene_graph_agent.py --model claude-sonnet-4-6
-```
+3. **Launch scene graph publisher** (terminal 2)
+   ```bash
+   python3 scene_graph_publisher.py \
+       --scene-graph data/scene_graph/scene_graph.json \
+       --load-offset data/scene_graph/map_offset.json \
+       --load-zones data/scene_graph/location_zones.json \
+       --frame-id map --world-axes xz
+   ```
 
-### 4. RViz2 (optional)
+4. **Launch agent** (terminal 3)
 
-```bash
-rviz2  # Add: /map, /scene_graph/markers, /scene_graph/zone_markers, /goal_pose
-```
+   **Cloud (Claude API):**
+   ```bash
+   export ANTHROPIC_API_KEY=sk-...
+   python3 scene_graph_agent.py --model claude-sonnet-4-6
+   ```
 
-### 5. Fake robot pose for testing (no SLAM)
+   **Edge (Local Qwen 3.5):**
+   ```bash
+   python3 scene_graph_agent_local.py --base-url http://localhost:8000/v1
+   ```
 
-```bash
-ros2 run tf2_ros static_transform_publisher 1.0 2.0 0 0 0 0 map base_link
-```
+5. **Optional: RViz2 visualization** (terminal 4)
+   ```bash
+   rviz2
+   # Add displays: /map, /scene_graph/markers, /scene_graph/zone_markers, /goal_pose
+   ```
+
+6. **Optional: Fake robot pose for testing (no SLAM)**
+   ```bash
+   ros2 run tf2_ros static_transform_publisher 1.0 2.0 0 0 0 0 map base_link
+   ```
 
 ## CLI Options
 
-### scene_graph_agent.py
+### scene_graph_agent.py (Cloud - Claude API)
 
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--model` | `claude-sonnet-4-6` | Claude model ID |
 | `--api-key` | `$ANTHROPIC_API_KEY` | Anthropic API key |
+| `--max-tokens` | `1024` | Max tokens per response |
+| `--frame-id` | `map` | TF frame for goals |
+| `--base-frame` | `base_link` | Robot base TF frame |
+
+### scene_graph_agent_local.py (Edge - Local LLM)
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--base-url` | (required) | OpenAI-compatible API base URL (e.g. `http://localhost:8000/v1`) |
+| `--model` | `qwen3.5-4b` | Model name (must match server-side model) |
 | `--max-tokens` | `1024` | Max tokens per response |
 | `--frame-id` | `map` | TF frame for goals |
 | `--base-frame` | `base_link` | Robot base TF frame |
@@ -228,30 +319,16 @@ You: what's around me?
 your left, and another about 2.8 meters behind you to the right.
 
 You: take me to the kitchen
-  [navigate_waypoint_journey("kitchen_area")] {"success": true, "zone_path": ["hri_lab", "hallway_0", "kitchen_area"],
-    "total_waypoints": 5, "stops": ["kitchen_area"], "total_stops": 1}
-[Assistant] Route planned through the hallway — 5 waypoints. Let's go!
+  [navigate_to_zone] {"success": true, "goal_position": {"x": 5.2, "y": 3.8}}
+[Assistant] I've set the kitchen as our destination. Let's go!
 
-You: are we there yet?
-  [get_journey_status] {"status": "executing", "current_waypoint": 3, "total_waypoints": 5,
-    "progress_percent": 60.0, "narration": "Waypoint 4 of 5: enter kitchen_area. 60.0% complete."}
-[Assistant] We're about 60% there — just entering the kitchen area now.
+You: get navigation status
+  [get_navigation_status] {"status": "navigating", "destination": "kitchen_area", "message": "Robot is moving towards kitchen"}
+[Assistant] We're on our way to the kitchen now.
 
 You: stop
-  [cancel_navigation] {"success": true, "message": "Navigation cancelled"}
+  [cancel_navigation] {"success": true}
 [Assistant] Done, I've stopped the robot.
-
-You: take me to the kitchen, then the elevator, then the lobby
-  [navigate_waypoint_journey(["kitchen_area", "elevator_area", "lobby"])]
-    {"success": true, "total_waypoints": 12, "stops": ["kitchen_area", "elevator_area", "lobby"],
-     "total_stops": 3}
-[Assistant] Multi-stop route planned — kitchen, elevator, then lobby (12 waypoints, 3 stops).
-
-You: how are we doing?
-  [get_journey_status] {"status": "executing", "current_waypoint": 4, "progress_percent": 33.3,
-    "current_stop": 1, "total_stops": 3,
-    "narration": "Waypoint 5 of 12: exit hallway_0. (stop 1 of 3: kitchen_area) 33.3% complete."}
-[Assistant] We're heading to stop 1 of 3 (the kitchen) — about a third of the way through.
 
 You: where's the nearest chair?
   [find_nearest] {"label": "chair_cluster_0004", "distance_m": 1.5, "direction": "to your left", "zone": "hri_lab"}
@@ -280,22 +357,38 @@ The agent is designed to keep Claude's context window lean:
 
 ```
 guide-llm/
-├── scene_graph_agent.py          # LLM agent (14 Claude tools + Nav2 + voice I/O)
-├── scene_graph_publisher.py      # Scene graph → ROS2 topics + RViz markers
+├── scene_graph_agent.py               # Cloud agent (Claude API + 14 tools + ROS2)
+├── scene_graph_agent_local.py         # Edge agent (Local LLM + 14 tools + ROS2)
+├── scene_graph_publisher.py           # Scene graph → ROS2 topics + RViz markers
+│
+├── finetune/                          # Fine-tuning pipeline for Qwen 3.5
+│   ├── finetune_qwen.py              #   Train model on tool-calling dataset
+│   ├── generate_dataset.py           #   Generate synthetic training data
+│   ├── validate_model.py             #   Evaluate fine-tuned model
+│   ├── output/                       #   Checkpoints + quantized models
+│   └── README.md                     #   Training guide
+│
 ├── data/
-│   ├── maps/                     # Occupancy grid maps for Nav2
-│   │   ├── level_12_v5.yaml      #   Building floor plan
+│   ├── maps/                         # Occupancy grid maps for Nav2
+│   │   ├── level_12_v5.yaml         #   Building floor plan
 │   │   ├── level_12_v5.pgm
-│   │   ├── song_map_lidar_.yaml  #   LiDAR-generated map
+│   │   ├── song_map_lidar_.yaml     #   LiDAR-generated map
 │   │   └── song_map_lidar_.pgm
-│   └── scene_graph/              # Scene graph + zone definitions
-│       ├── scene_graph.json      #   Objects with 3D centroids
-│       ├── location_zones.json   #   Named zone polygons
-│       └── map_offset.json       #   SLAM→map alignment offset
+│   └── scene_graph/                  # Scene graph + zone definitions
+│       ├── scene_graph.json         #   Objects with 3D centroids
+│       ├── location_zones.json      #   Named zone polygons
+│       └── map_offset.json          #   SLAM→map alignment offset
+│
+├── research/                          # Research documentation & publication strategy
+│   ├── RESEARCH_AND_PUBLICATION.md  #   6-month publication roadmap
+│   ├── design/                      #   System design & architecture
+│   └── training/                    #   Training results & findings
+│
 ├── setup.py
 ├── setup.cfg
 ├── package.xml
-├── resource/guide_llm
+├── resource/guide_llm/               # ROS2 package resource files (needed for Docker build)
+├── CLAUDE.md                         # Collaboration guidelines
 └── README.md
 ```
 

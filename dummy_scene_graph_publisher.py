@@ -272,7 +272,6 @@ class DummySceneGraphPublisher(Node):
 
     def _publish_nav_status(self):
         msg = GoalStatusArray()
-        msg.header.stamp = self.get_clock().now().to_msg()
         if self._nav_status != GoalStatus.STATUS_UNKNOWN:
             status = GoalStatus()
             status.status = self._nav_status

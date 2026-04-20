@@ -1,0 +1,9 @@
+# Model weights (download via setup_ollama.sh)
+models/*.gguf
+
+# Python
+__pycache__/
+*.pyc
+
+# Unsloth cache
+unsloth_compiled_cache/

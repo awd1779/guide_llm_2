@@ -1,0 +1,25 @@
+FROM ./qwen3.5-2b-toolcall-q8.gguf
+
+TEMPLATE """{{- range $i, $_ := .Messages }}
+{{- if eq .Role "system" }}
+{{- if $i }}<|im_start|>system
+{{ .Content }}<|im_end|>
+{{ else }}<|im_start|>system
+{{ .Content }}<|im_end|>
+{{ end }}
+{{- else if eq .Role "user" }}<|im_start|>user
+{{ .Content }}<|im_end|>
+{{- else if eq .Role "assistant" }}<|im_start|>assistant
+{{ .Content }}<|im_end|>
+{{- end }}
+{{- end }}<|im_start|>assistant
+<think>
+
+</think>
+
+"""
+
+PARAMETER temperature 0
+PARAMETER num_ctx 4096
+PARAMETER stop <|im_end|>
+PARAMETER stop <|endoftext|>

@@ -20,6 +20,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import select
 import signal
 import subprocess
@@ -34,10 +35,12 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatusArray, GoalStatus
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener, LookupException, ExtrapolationException
+from nav2_msgs.action import NavigateToPose
 
 
 # ---------------------------------------------------------------------------
@@ -48,80 +51,8 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "navigate_to_zone",
-            "description": "Navigate the robot to a named zone by publishing its centroid as a Nav2 goal pose.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "zone_name": {"type": "string", "description": "Exact zone name from list_zones"},
-                },
-                "required": ["zone_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "navigate_to_object",
-            "description": "Navigate the robot to a detected object by publishing its map position as a Nav2 goal pose.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_label": {"type": "string", "description": "Exact object label from list_objects"},
-                },
-                "required": ["object_label"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "query_zone",
-            "description": "Get detailed information about a specific zone (objects inside, area, etc.).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "zone_name": {"type": "string", "description": "Exact zone name"},
-                },
-                "required": ["zone_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "query_object",
-            "description": "Get detailed information about a specific object (position, zone, confidence).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_label": {"type": "string", "description": "Exact object label"},
-                },
-                "required": ["object_label"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_zones",
-            "description": "List all known zone names in the scene graph.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_objects",
-            "description": "List all known object labels in the scene graph.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "get_robot_pose",
-            "description": "Get the robot's current position (x, y, yaw) and which zone it is in via TF lookup.",
+            "description": "Get the robot's current position and which zone it is in.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -144,9 +75,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_navigation_status",
-            "description": "Check the current Nav2 navigation status (executing, succeeded, failed, etc.).",
+            "name": "list_all",
+            "description": "List all known zones (rooms/areas) and objects in the environment.",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query",
+            "description": "Get detailed information about a specific zone or object by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Zone name or object label to look up"},
+                },
+                "required": ["name"],
+            },
         },
     },
     {
@@ -208,7 +153,113 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "navigate_to",
+            "description": "Navigate the robot to a destination (zone or object) by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "destination": {"type": "string", "description": "Zone name or object label to navigate to"},
+                },
+                "required": ["destination"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_navigation_status",
+            "description": "Check the current navigation status (executing, succeeded, failed, etc.).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_navigation",
+            "description": "Cancel the current navigation goal.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "replan_route",
+            "description": "Replan route to a new destination or re-route around obstacles.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "destination": {
+                        "type": "string",
+                        "description": "New destination zone or object (optional, continues to current destination if not provided)",
+                    },
+                    "avoid_obstacles": {
+                        "type": "boolean",
+                        "description": "Set to true to re-route around detected obstacles (optional, default false)",
+                    },
+                },
+            },
+        },
+    },
 ]
+
+# ---------------------------------------------------------------------------
+# Tool prompt injection (bypasses Ollama's broken tool parsing for Qwen 3.5)
+# ---------------------------------------------------------------------------
+
+# Exact format from Qwen 3.5 chat_template.jinja — model was trained on this
+TOOL_CALL_INSTRUCTIONS = (
+    "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n"
+    "<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\n"
+    "value_1\n</parameter>\n<parameter=example_parameter_2>\n"
+    "This is the value for the second parameter\nthat can span\nmultiple lines\n"
+    "</parameter>\n</function>\n</tool_call>\n\n"
+    "<IMPORTANT>\nReminder:\n"
+    "- Function calls MUST follow the specified format: an inner <function=...></function> "
+    "block must be nested within <tool_call></tool_call> XML tags\n"
+    "- Required parameters MUST be specified\n"
+    "- You may provide optional reasoning for your function call in natural language "
+    "BEFORE the function call, but NOT after\n"
+    "- If there is no function call available, answer the question like normal with your "
+    "current knowledge and do not tell the user about function calls\n"
+    "</IMPORTANT>"
+)
+
+
+def build_tools_system_prompt(system_prompt):
+    """Build system prompt with embedded tool definitions (Qwen chat template format)."""
+    tools_text = "# Tools\n\nYou have access to the following functions:\n\n<tools>"
+    for tool in TOOLS:
+        tools_text += "\n" + json.dumps(tool)
+    tools_text += "\n</tools>"
+    tools_text += TOOL_CALL_INSTRUCTIONS
+    tools_text += "\n\n" + system_prompt
+    return tools_text
+
+
+def parse_xml_tool_calls(text):
+    """Parse Qwen XML tool calls from model output.
+
+    Format: <function=name><parameter=key>value</parameter></function>
+    Returns: list of (name, args_dict) tuples
+    """
+    calls = []
+    for match in re.finditer(r'<function=(\w+)>(.*?)</function>', text, re.DOTALL):
+        name = match.group(1)
+        args = {}
+        for pm in re.finditer(r'<parameter=(\w+)>(.*?)</parameter>', match.group(2), re.DOTALL):
+            args[pm.group(1)] = pm.group(2).strip()
+        calls.append((name, args))
+    return calls
+
+
+def strip_model_tags(text):
+    """Remove <think>, <tool_call> blocks from text for spoken output."""
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<tool_call>.*?</tool_call>', '', text, flags=re.DOTALL)
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -279,12 +330,15 @@ class SceneGraphAgent(Node):
         # Nav2 status tracking
         self._nav_status = None  # latest GoalStatus code
         self._nav_goal_zone = None  # name of zone/object we're navigating to
+        self._nav_goal_handle = None  # goal handle for cancellation
         self.create_subscription(
             GoalStatusArray,
             "/navigate_to_pose/_action/status",
             self._on_nav_status,
             10,
         )
+        # Action client for navigate_to_pose (used for sending and canceling goals)
+        self._nav_action_client = ActionClient(self, NavigateToPose, "navigate_to_pose")
         self._zone_query_pub = self.create_publisher(
             String, "/scene_graph/zone_query", 10
         )
@@ -380,26 +434,18 @@ class SceneGraphAgent(Node):
 
     def _rebuild_system_prompt(self):
         self._system_prompt = (
-            "You are a navigation assistant for a mobile robot in an indoor environment.\n"
+            "You are a navigation assistant for blind/low-vision users on a mobile robot.\n"
             f"The scene graph has {len(self._zone_names)} zones and {len(self._object_labels)} objects.\n"
             "\n"
-            "TOOLS:\n"
-            "- get_robot_pose: Check robot's current position and which zone it's in.\n"
-            "- describe_surroundings: Describe nearby objects within a radius. Use when user asks what's around them.\n"
-            "- find_nearest: Find the closest object matching a keyword (substring match). Use for 'where is the nearest chair?'.\n"
-            "- distance_to: Get straight-line distance and direction to a zone or object without navigating.\n"
-            "- describe_route: Preview what zones and objects are along the path to a destination.\n"
-            "- orient_me: Rotate the robot in place to face a target zone or object. Use for 'face towards the kitchen'.\n"
-            "- list_zones / list_objects: Returns only names. Use FIRST to discover what's available.\n"
-            "- query_zone / query_object: Get details for a specific zone or object.\n"
-            "- navigate_to_zone / navigate_to_object: Send the robot to a destination. The robot's path planner handles the route.\n"
-            "- get_navigation_status: Check if the robot has arrived, is still moving, or if navigation failed.\n"
+            "AVAILABLE TOOLS: navigate_to, cancel_navigation, replan_route, get_navigation_status, "
+            "get_robot_pose, describe_surroundings, query, find_nearest, distance_to, describe_route, "
+            "orient_me, list_all\n"
             "\n"
             "INSTRUCTIONS:\n"
             "- ALWAYS confirm with the user BEFORE navigating. First tell them where you plan to go "
             "and ask 'shall we go?' or 'ready?'. Only call navigate tools AFTER the user confirms. "
             "Never start moving the robot without the user's approval.\n"
-            "- Do NOT guess names. Always call list_zones or list_objects first to find exact names.\n"
+            "- Do NOT guess names. Always call list_all first to find exact names.\n"
             "- The user is vision-impaired. Describe locations and surroundings verbally.\n"
             "- IMPORTANT: Keep responses to 1-2 short sentences MAX. No bullet lists, no long explanations. "
             "Be direct and conversational, like a brief spoken reply.\n"
@@ -445,12 +491,12 @@ class SceneGraphAgent(Node):
         print("You: ", end="", flush=True)
 
     def _call_llm(self):
-        messages = [{"role": "system", "content": self._system_prompt}] + self._conversation_history
+        # Inject tool definitions into system prompt (bypasses Ollama's broken tool parsing)
+        system_with_tools = build_tools_system_prompt(self._system_prompt)
+        messages = [{"role": "system", "content": system_with_tools}] + self._conversation_history
         kwargs = dict(
             model=self._model,
             messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
         )
         if self._max_tokens > 0:
             kwargs["max_tokens"] = self._max_tokens
@@ -458,47 +504,32 @@ class SceneGraphAgent(Node):
 
     def _process_response(self, response):
         message = response.choices[0].message
+        content = message.content or ""
 
-        # Extract text content
-        if message.content:
-            print(f"\n[Assistant] {message.content}", flush=True)
-            self._publish_speech_feedback(message.content)
+        # Parse XML tool calls from raw text (bypasses Ollama's broken tool parsing)
+        tool_calls = parse_xml_tool_calls(content)
 
-        # Build assistant message for conversation history
-        assistant_msg = {"role": "assistant", "content": message.content or ""}
-        if message.tool_calls:
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in message.tool_calls
-            ]
-        self._conversation_history.append(assistant_msg)
-
-        if not message.tool_calls:
+        if not tool_calls:
+            # Language response — speak to user
+            clean = strip_model_tags(content)
+            if clean:
+                print(f"\n[Assistant] {clean}", flush=True)
+                self._publish_speech_feedback(clean)
+            self._conversation_history.append({"role": "assistant", "content": content})
             return
 
-        # Execute each tool and add results to conversation
-        for tool_call in message.tool_calls:
-            func_name = tool_call.function.name
-            try:
-                func_args = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                func_args = {}
+        # Tool call(s) detected — add raw assistant output to history
+        self._conversation_history.append({"role": "assistant", "content": content})
 
+        # Execute each tool and add results as <tool_response> (Qwen chat template format)
+        for func_name, func_args in tool_calls:
             result = self._execute_tool(func_name, func_args)
             self._debug_log(
                 f"[tool] {func_name}({json.dumps(func_args)}) -> {result[:300]}"
             )
             self._conversation_history.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
+                "role": "user",
+                "content": f"<tool_response>\n{result}\n</tool_response>",
             })
 
         # Follow-up call so the LLM can respond with the tool results
@@ -511,25 +542,15 @@ class SceneGraphAgent(Node):
 
     def _execute_tool(self, name, tool_input):
         try:
-            if name == "navigate_to_zone":
-                return self._nav_to_zone(tool_input["zone_name"])
-            elif name == "navigate_to_object":
-                return self._nav_to_object(tool_input["object_label"])
-            elif name == "query_zone":
-                return self._query_zone(tool_input["zone_name"])
-            elif name == "query_object":
-                return self._query_object(tool_input["object_label"])
-            elif name == "list_zones":
-                return self._list_zones()
-            elif name == "list_objects":
-                return self._list_objects()
-            elif name == "get_robot_pose":
+            if name == "get_robot_pose":
                 return self._get_robot_pose()
             elif name == "describe_surroundings":
                 radius = tool_input.get("radius", 3.0)
                 return self._describe_surroundings(radius)
-            elif name == "get_navigation_status":
-                return self._get_navigation_status()
+            elif name == "list_all":
+                return self._list_all()
+            elif name == "query":
+                return self._query(tool_input["name"])
             elif name == "find_nearest":
                 return self._find_nearest(tool_input["object_type"])
             elif name == "distance_to":
@@ -538,6 +559,14 @@ class SceneGraphAgent(Node):
                 return self._describe_route(tool_input["destination"])
             elif name == "orient_me":
                 return self._orient_me(tool_input["target"])
+            elif name == "navigate_to":
+                return self._navigate_to(tool_input["destination"])
+            elif name == "get_navigation_status":
+                return self._get_navigation_status()
+            elif name == "cancel_navigation":
+                return self._cancel_navigation()
+            elif name == "replan_route":
+                return self._replan_route(tool_input.get("destination"), tool_input.get("avoid_obstacles", False))
             else:
                 return json.dumps({"error": f"Unknown tool: {name}"})
         except Exception as e:
@@ -556,6 +585,41 @@ class SceneGraphAgent(Node):
         goal.pose.orientation.z = math.sin(yaw / 2.0)
         goal.pose.orientation.w = math.cos(yaw / 2.0)
         self._goal_pub.publish(goal)
+
+    def _send_goal_via_action(self, x, y, yaw=0.0):
+        """Send goal via Nav2 action client and store goal handle for later cancellation."""
+        if not self._nav_action_client.wait_for_server(timeout_sec=1.0):
+            self._debug_log("[navigation] Nav2 action server not available, falling back to topic publish")
+            self._publish_goal(x, y, yaw)
+            return False
+
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = self._frame_id
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        goal_pose.pose.position.x = float(x)
+        goal_pose.pose.position.y = float(y)
+        goal_pose.pose.orientation.z = math.sin(yaw / 2.0)
+        goal_pose.pose.orientation.w = math.cos(yaw / 2.0)
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = goal_pose
+
+        # Send goal asynchronously and store handle
+        send_goal_future = self._nav_action_client.send_goal_async(goal_msg)
+        send_goal_future.add_done_callback(self._goal_response_callback)
+        return True
+
+    def _goal_response_callback(self, future):
+        """Callback when goal is accepted or rejected by Nav2."""
+        try:
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                self._debug_log("[navigation] Goal rejected by Nav2")
+                return
+            self._nav_goal_handle = goal_handle
+            self._debug_log(f"[navigation] Goal accepted, handle stored for cancellation")
+        except Exception as e:
+            self._debug_log(f"[navigation] Error getting goal handle: {e}")
 
     @staticmethod
     def _relative_direction(robot_yaw, rx, ry, tx, ty):
@@ -582,52 +646,43 @@ class SceneGraphAgent(Node):
         else:
             return "behind"
 
-    def _nav_to_zone(self, zone_name):
-        if not self._zones_data:
-            return json.dumps({"error": "No zone data available"})
+    def _navigate_to(self, destination):
+        """Navigate to a destination — tries zone first, then object."""
+        dest_lower = destination.strip().lower()
 
-        zone_lower = zone_name.strip().lower()
-        for zone in self._zones_data.get("zones", []):
-            if zone["name"].lower() == zone_lower:
-                verts = zone["vertices_world"]
-                cx = sum(v[0] for v in verts) / len(verts)
-                cy = sum(v[1] for v in verts) / len(verts)
-                self._publish_goal(cx, cy)
-                self._nav_goal_zone = zone["name"]
-                self._nav_status = GoalStatus.STATUS_EXECUTING
-                return json.dumps({
-                    "status": "goal_sent",
-                    "zone": zone["name"],
-                    "goal_x": round(cx, 3),
-                    "goal_y": round(cy, 3),
-                })
+        # Try zone match
+        if self._zones_data:
+            for zone in self._zones_data.get("zones", []):
+                if zone["name"].lower() == dest_lower:
+                    verts = zone["vertices_world"]
+                    cx = sum(v[0] for v in verts) / len(verts)
+                    cy = sum(v[1] for v in verts) / len(verts)
+                    self._send_goal_via_action(cx, cy)
+                    self._nav_goal_zone = zone["name"]
+                    self._nav_status = GoalStatus.STATUS_EXECUTING
+                    return json.dumps({
+                        "status": "goal_sent",
+                        "destination": zone["name"],
+                        "type": "zone",
+                    })
 
-        return json.dumps({
-            "error": f"Zone '{zone_name}' not found.",
-            "hint": "Use list_zones to see available zone names.",
-        })
-
-    def _nav_to_object(self, object_label):
-        if not self._objects_data:
-            return json.dumps({"error": "No object data available"})
-
-        label_lower = object_label.strip().lower()
-        for obj in self._objects_data.get("objects", []):
-            if obj["label"].lower() == label_lower:
-                pos = obj["map_position"]
-                self._publish_goal(pos["x"], pos["y"])
-                self._nav_goal_zone = obj["label"]
-                self._nav_status = GoalStatus.STATUS_EXECUTING
-                return json.dumps({
-                    "status": "goal_sent",
-                    "object": obj["label"],
-                    "goal_x": round(pos["x"], 3),
-                    "goal_y": round(pos["y"], 3),
-                })
+        # Try object match
+        if self._objects_data:
+            for obj in self._objects_data.get("objects", []):
+                if obj["label"].lower() == dest_lower:
+                    pos = obj["map_position"]
+                    self._send_goal_via_action(pos["x"], pos["y"])
+                    self._nav_goal_zone = obj["label"]
+                    self._nav_status = GoalStatus.STATUS_EXECUTING
+                    return json.dumps({
+                        "status": "goal_sent",
+                        "destination": obj["label"],
+                        "type": "object",
+                    })
 
         return json.dumps({
-            "error": f"Object '{object_label}' not found.",
-            "hint": "Use list_objects to see available object labels.",
+            "error": f"Destination '{destination}' not found.",
+            "hint": "Use list_all to see available zones and objects.",
         })
 
     def _get_navigation_status(self):
@@ -643,6 +698,99 @@ class SceneGraphAgent(Node):
         return json.dumps({
             "status": status_map.get(self._nav_status, "no_goal"),
             "destination": self._nav_goal_zone,
+        })
+
+    def _cancel_navigation(self):
+        """Cancel the current navigation goal via action client."""
+        if not self._nav_goal_handle:
+            return json.dumps({
+                "status": "no_goal",
+                "message": "No active navigation goal to cancel.",
+            })
+
+        if self._nav_status not in [GoalStatus.STATUS_EXECUTING, GoalStatus.STATUS_ACCEPTED]:
+            return json.dumps({
+                "status": "no_active_goal",
+                "message": f"Navigation is not active (status: {self._nav_status}).",
+            })
+
+        # Send cancel request via action client
+        try:
+            cancel_future = self._nav_goal_handle.cancel_goal_async()
+            cancel_future.add_done_callback(self._cancel_done_callback)
+            self._nav_status = GoalStatus.STATUS_CANCELING
+            self._debug_log(f"[navigation] Cancel request sent for {self._nav_goal_zone}")
+            return json.dumps({
+                "status": "cancel_sent",
+                "message": f"Navigation to {self._nav_goal_zone} is being canceled.",
+            })
+        except Exception as e:
+            self._debug_log(f"[navigation] Error canceling goal: {e}")
+            return json.dumps({
+                "status": "error",
+                "error": f"Failed to cancel goal: {str(e)}",
+            })
+
+    def _cancel_done_callback(self, future):
+        """Callback when cancel request completes."""
+        try:
+            cancel_response = future.result()
+            self._debug_log(f"[navigation] Goal cancellation result: {cancel_response.return_code}")
+        except Exception as e:
+            self._debug_log(f"[navigation] Error processing cancel response: {e}")
+
+    def _replan_route(self, destination=None, avoid_obstacles=False):
+        """Replan route to a new destination or re-route around obstacles."""
+        # If no destination provided, replan to current goal (useful for obstacle avoidance)
+        if destination is None:
+            if self._nav_goal_zone is None:
+                return json.dumps({
+                    "error": "No active navigation goal and no destination specified.",
+                })
+            target = self._nav_goal_zone
+            replanning = True
+        else:
+            target = destination
+            replanning = False
+
+        # Try to resolve destination
+        dest_lower = target.lower()
+
+        # Try zone match
+        if self._zones_data:
+            for zone in self._zones_data.get("zones", []):
+                if zone["name"].lower() == dest_lower:
+                    verts = zone["vertices_world"]
+                    cx = sum(v[0] for v in verts) / len(verts)
+                    cy = sum(v[1] for v in verts) / len(verts)
+                    self._send_goal_via_action(cx, cy)
+                    self._nav_goal_zone = zone["name"]
+                    self._nav_status = GoalStatus.STATUS_EXECUTING
+                    return json.dumps({
+                        "status": "replanned",
+                        "destination": zone["name"],
+                        "avoid_obstacles": avoid_obstacles,
+                        "type": "zone",
+                    })
+
+        # Try object match
+        if self._objects_data:
+            for obj in self._objects_data.get("objects", []):
+                if obj["label"].lower() == dest_lower:
+                    pos = obj["map_position"]
+                    self._send_goal_via_action(pos["x"], pos["y"])
+                    self._nav_goal_zone = obj["label"]
+                    self._nav_status = GoalStatus.STATUS_EXECUTING
+                    return json.dumps({
+                        "status": "replanned",
+                        "destination": obj["label"],
+                        "avoid_obstacles": avoid_obstacles,
+                        "type": "object",
+                    })
+
+        return json.dumps({
+            "error": f"Destination '{target}' not found.",
+            "hint": "Use list_all to see available zones and objects.",
         })
 
     def _describe_surroundings(self, radius=3.0):
@@ -684,57 +832,73 @@ class SceneGraphAgent(Node):
         })
 
     # -------------------------------------------------------------------
-    # Query tools (via scene_graph_publisher round-trip)
+    # Query tool (merged zone + object query)
     # -------------------------------------------------------------------
 
-    def _query_zone(self, zone_name):
-        self._zone_result_event.clear()
-        self._pending_zone_result = None
+    def _query(self, name):
+        """Query details about a zone or object by name — tries zone first, then object."""
+        name_lower = name.strip().lower()
 
-        msg = String()
-        msg.data = zone_name
-        self._zone_query_pub.publish(msg)
+        # Try zone match via scene_graph_publisher round-trip
+        if self._zones_data:
+            for zone in self._zones_data.get("zones", []):
+                if zone["name"].lower() == name_lower:
+                    self._zone_result_event.clear()
+                    self._pending_zone_result = None
+                    msg = String()
+                    msg.data = zone["name"]
+                    self._zone_query_pub.publish(msg)
+                    if self._zone_result_event.wait(timeout=3.0):
+                        return self._pending_zone_result
+                    return json.dumps({"error": f"Timeout querying zone '{name}'"})
 
-        if self._zone_result_event.wait(timeout=3.0):
-            return self._pending_zone_result
-        return json.dumps({"error": f"Timeout waiting for zone query result for '{zone_name}'"})
+        # Try object match via scene_graph_publisher round-trip
+        if self._objects_data:
+            for obj in self._objects_data.get("objects", []):
+                if obj["label"].lower() == name_lower:
+                    self._query_result_event.clear()
+                    self._pending_query_result = None
+                    msg = String()
+                    msg.data = obj["label"]
+                    self._object_query_pub.publish(msg)
+                    if self._query_result_event.wait(timeout=3.0):
+                        return self._pending_query_result
+                    return json.dumps({"error": f"Timeout querying object '{name}'"})
 
-    def _query_object(self, object_label):
-        self._query_result_event.clear()
-        self._pending_query_result = None
-
-        msg = String()
-        msg.data = object_label
-        self._object_query_pub.publish(msg)
-
-        if self._query_result_event.wait(timeout=3.0):
-            return self._pending_query_result
-        return json.dumps({"error": f"Timeout waiting for object query result for '{object_label}'"})
+        return json.dumps({
+            "error": f"'{name}' not found.",
+            "hint": "Use list_all to see available zones and objects.",
+        })
 
     # -------------------------------------------------------------------
-    # List tools (local data)
+    # List tool (merged zones + objects)
     # -------------------------------------------------------------------
 
-    def _list_zones(self):
-        if not self._zone_names:
-            return json.dumps({"error": "No zone data available"})
-        # Include hierarchy info so the LLM understands zone structure
-        zone_list = []
-        for zone in self._zones_data.get("zones", []):
-            entry = {"name": zone["name"]}
-            if zone.get("display_name"):
-                entry["display_name"] = zone["display_name"]
-            if zone.get("parent"):
-                entry["parent"] = zone["parent"]
-            if zone.get("children"):
-                entry["children"] = zone["children"]
-            zone_list.append(entry)
-        return json.dumps({"zones": zone_list})
+    def _list_all(self):
+        """List all known zones and objects."""
+        result = {}
 
-    def _list_objects(self):
-        if not self._object_labels:
-            return json.dumps({"error": "No object data available"})
-        return json.dumps({"objects": self._object_labels})
+        if self._zone_names:
+            zone_list = []
+            for zone in self._zones_data.get("zones", []):
+                entry = {"name": zone["name"]}
+                if zone.get("display_name"):
+                    entry["display_name"] = zone["display_name"]
+                if zone.get("parent"):
+                    entry["parent"] = zone["parent"]
+                if zone.get("children"):
+                    entry["children"] = zone["children"]
+                zone_list.append(entry)
+            result["zones"] = zone_list
+        else:
+            result["zones"] = []
+
+        if self._object_labels:
+            result["objects"] = self._object_labels
+        else:
+            result["objects"] = []
+
+        return json.dumps(result)
 
     # -------------------------------------------------------------------
     # Localization tool (TF lookup)
@@ -889,7 +1053,7 @@ class SceneGraphAgent(Node):
         if best is None:
             return json.dumps({
                 "error": f"No objects matching '{object_type}' found.",
-                "hint": "Use list_objects to see available labels.",
+                "hint": "Use list_all to see available zones and objects.",
             })
 
         pos = best["map_position"]
@@ -920,7 +1084,7 @@ class SceneGraphAgent(Node):
         if resolved is None:
             return json.dumps({
                 "error": f"Destination '{destination}' not found.",
-                "hint": "Use list_zones or list_objects to see available names.",
+                "hint": "Use list_all to see available names.",
             })
 
         tx, ty, name, kind = resolved
@@ -944,7 +1108,7 @@ class SceneGraphAgent(Node):
         if resolved is None:
             return json.dumps({
                 "error": f"Destination '{destination}' not found.",
-                "hint": "Use list_zones or list_objects to see available names.",
+                "hint": "Use list_all to see available names.",
             })
 
         tx, ty, name, kind = resolved
@@ -1018,7 +1182,7 @@ class SceneGraphAgent(Node):
         if resolved is None:
             return json.dumps({
                 "error": f"Target '{target}' not found.",
-                "hint": "Use list_zones or list_objects to see available names.",
+                "hint": "Use list_all to see available names.",
             })
 
         tx, ty, name, kind = resolved
@@ -1032,8 +1196,8 @@ class SceneGraphAgent(Node):
         turn = (turn + math.pi) % (2 * math.pi) - math.pi
         turn_deg = math.degrees(turn)
 
-        # Publish goal at current position with target yaw
-        self._publish_goal(rx, ry, yaw=target_yaw)
+        # Send goal at current position with target yaw
+        self._send_goal_via_action(rx, ry, yaw=target_yaw)
         self._nav_goal_zone = f"orient:{name}"
         self._nav_status = GoalStatus.STATUS_EXECUTING
 

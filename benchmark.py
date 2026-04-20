@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""
+Benchmark installed guide-llm-* Ollama models on a given prompt.
+
+Measures tokens/sec, time-to-first-token, total latency, and peak GPU
+utilization / memory usage (via nvidia-smi) per model.
+
+Usage:
+    python3 benchmark.py "take me to the kitchen"
+    python3 benchmark.py "describe my surroundings" --runs 3
+    python3 benchmark.py "hello" --models guide-llm-2b-q8 guide-llm-4b-q4
+"""
+import argparse
+import json
+import subprocess
+import threading
+import time
+import urllib.request
+
+
+def poll_gpu(stop_event, out):
+    while not stop_event.is_set():
+        try:
+            res = subprocess.run(
+                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=1,
+            )
+            if res.returncode == 0:
+                util, mem = [int(x.strip()) for x in res.stdout.strip().split(",")[:2]]
+                out["peak_util"] = max(out["peak_util"], util)
+                out["peak_mem"] = max(out["peak_mem"], mem)
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+
+def run_one(model, prompt):
+    gpu = {"peak_util": 0, "peak_mem": 0}
+    stop = threading.Event()
+    t = threading.Thread(target=poll_gpu, args=(stop, gpu))
+    t.start()
+
+    body = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
+    req = urllib.request.Request(
+        "http://localhost:11434/api/generate",
+        data=body, headers={"Content-Type": "application/json"},
+    )
+    r = json.loads(urllib.request.urlopen(req, timeout=300).read())
+
+    stop.set()
+    t.join()
+
+    return {
+        "tok_s": r["eval_count"] / (r["eval_duration"] / 1e9),
+        "ttft_ms": r["prompt_eval_duration"] / 1e6,
+        "total_s": r["total_duration"] / 1e9,
+        "gpu_pct": gpu["peak_util"],
+        "mem_mib": gpu["peak_mem"],
+    }
+
+
+def discover_models():
+    res = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+    return [line.split()[0] for line in res.stdout.splitlines()[1:]
+            if line.startswith("guide-llm-")]
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("prompt", help="Prompt to send to each model")
+    p.add_argument("--models", nargs="+", help="Model names (default: all installed guide-llm-*)")
+    p.add_argument("--runs", type=int, default=1, help="Runs per model, averaged (default 1)")
+    args = p.parse_args()
+
+    models = args.models or discover_models()
+    if not models:
+        raise SystemExit("No guide-llm-* models found. Run: bash setup_ollama.sh all")
+
+    preview = args.prompt if len(args.prompt) <= 60 else args.prompt[:57] + "..."
+    print(f"\nPrompt: {preview}")
+    print(f"Runs per model: {args.runs}\n")
+    print(f"{'MODEL':<24}{'TOK/S':>8}{'TTFT(ms)':>10}{'TOTAL(s)':>10}{'GPU%':>8}{'MEM(MiB)':>12}")
+    print("-" * 72)
+
+    for m in models:
+        try:
+            runs = [run_one(m, args.prompt) for _ in range(args.runs)]
+        except Exception as e:
+            print(f"{m:<24}  ERROR: {e}")
+            continue
+        avg = {k: sum(r[k] for r in runs) / len(runs) for k in runs[0]}
+        print(f"{m:<24}{avg['tok_s']:>8.1f}{avg['ttft_ms']:>10.0f}"
+              f"{avg['total_s']:>10.2f}{avg['gpu_pct']:>8.0f}{avg['mem_mib']:>12.0f}")
+
+
+if __name__ == "__main__":
+    main()

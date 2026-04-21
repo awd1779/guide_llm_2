@@ -155,6 +155,7 @@ def main():
         time.sleep(UNLOAD_SETTLE_SEC)
 
         try:
+            run_one(m, args.prompt)  # warm-up (discarded) to exclude cold-load from timings
             runs = [run_one(m, args.prompt) for _ in range(args.runs)]
         except Exception as e:
             print(f"{m:<24}  ERROR: {e}")

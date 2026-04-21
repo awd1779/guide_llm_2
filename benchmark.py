@@ -2,8 +2,12 @@
 """
 Benchmark installed guide-llm-* Ollama models on a given prompt.
 
-Measures tokens/sec, time-to-first-token, total latency, and peak GPU
-utilization / memory usage (via nvidia-smi) per model.
+Measures tokens/sec, time-to-first-token, total latency, tokens generated,
+and peak GPU utilization / memory usage per model.
+
+GPU monitoring:
+  - On Jetson (detected via /etc/nv_tegra_release): parses `tegrastats`.
+  - Elsewhere (x86 + discrete NVIDIA): uses `nvidia-smi`.
 
 Usage:
     python3 benchmark.py "take me to the kitchen"
@@ -12,13 +16,47 @@ Usage:
 """
 import argparse
 import json
+import os
+import re
 import subprocess
 import threading
 import time
 import urllib.request
 
 
-def poll_gpu(stop_event, out):
+IS_JETSON = os.path.exists("/etc/nv_tegra_release")
+
+
+def poll_tegrastats(stop_event, out):
+    try:
+        proc = subprocess.Popen(
+            ["tegrastats", "--interval", "200"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+    except FileNotFoundError:
+        return
+    gpu_re = re.compile(r"GR3D_FREQ\s+(\d+)%")
+    ram_re = re.compile(r"RAM\s+(\d+)/\d+MB")
+    try:
+        while not stop_event.is_set():
+            line = proc.stdout.readline()
+            if not line:
+                break
+            m_gpu = gpu_re.search(line)
+            m_ram = ram_re.search(line)
+            if m_gpu:
+                out["peak_util"] = max(out["peak_util"], int(m_gpu.group(1)))
+            if m_ram:
+                out["peak_mem"] = max(out["peak_mem"], int(m_ram.group(1)))
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def poll_nvidia_smi(stop_event, out):
     while not stop_event.is_set():
         try:
             res = subprocess.run(
@@ -27,12 +65,20 @@ def poll_gpu(stop_event, out):
                 capture_output=True, text=True, timeout=1,
             )
             if res.returncode == 0:
-                util, mem = [int(x.strip()) for x in res.stdout.strip().split(",")[:2]]
+                parts = res.stdout.strip().split(",")
+                util, mem = int(parts[0].strip()), int(parts[1].strip())
                 out["peak_util"] = max(out["peak_util"], util)
                 out["peak_mem"] = max(out["peak_mem"], mem)
         except Exception:
             pass
         time.sleep(0.2)
+
+
+def poll_gpu(stop_event, out):
+    if IS_JETSON:
+        poll_tegrastats(stop_event, out)
+    else:
+        poll_nvidia_smi(stop_event, out)
 
 
 def run_one(model, prompt):
@@ -52,6 +98,7 @@ def run_one(model, prompt):
     t.join()
 
     return {
+        "tokens": r["eval_count"],
         "tok_s": r["eval_count"] / (r["eval_duration"] / 1e9),
         "ttft_ms": r["prompt_eval_duration"] / 1e6,
         "total_s": r["total_duration"] / 1e9,
@@ -79,9 +126,11 @@ def main():
 
     preview = args.prompt if len(args.prompt) <= 60 else args.prompt[:57] + "..."
     print(f"\nPrompt: {preview}")
-    print(f"Runs per model: {args.runs}\n")
-    print(f"{'MODEL':<24}{'TOK/S':>8}{'TTFT(ms)':>10}{'TOTAL(s)':>10}{'GPU%':>8}{'MEM(MiB)':>12}")
-    print("-" * 72)
+    print(f"Runs per model: {args.runs}")
+    print(f"GPU backend: {'tegrastats (Jetson)' if IS_JETSON else 'nvidia-smi'}\n")
+    header = f"{'MODEL':<24}{'TOKENS':>8}{'TOK/S':>8}{'TTFT(ms)':>10}{'TOTAL(s)':>10}{'GPU%':>8}{'MEM(MiB)':>12}"
+    print(header)
+    print("-" * len(header))
 
     for m in models:
         try:
@@ -90,7 +139,7 @@ def main():
             print(f"{m:<24}  ERROR: {e}")
             continue
         avg = {k: sum(r[k] for r in runs) / len(runs) for k in runs[0]}
-        print(f"{m:<24}{avg['tok_s']:>8.1f}{avg['ttft_ms']:>10.0f}"
+        print(f"{m:<24}{avg['tokens']:>8.0f}{avg['tok_s']:>8.1f}{avg['ttft_ms']:>10.0f}"
               f"{avg['total_s']:>10.2f}{avg['gpu_pct']:>8.0f}{avg['mem_mib']:>12.0f}")
 
 

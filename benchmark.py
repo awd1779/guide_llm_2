@@ -81,6 +81,22 @@ def poll_gpu(stop_event, out):
         poll_nvidia_smi(stop_event, out)
 
 
+UNLOAD_SETTLE_SEC = 3
+
+
+def unload(model):
+    """Ask Ollama to unload the model from GPU (keep_alive=0)."""
+    body = json.dumps({"model": model, "keep_alive": 0}).encode()
+    req = urllib.request.Request(
+        "http://localhost:11434/api/generate",
+        data=body, headers={"Content-Type": "application/json"},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=30).read()
+    except Exception:
+        pass
+
+
 def run_one(model, prompt):
     gpu = {"peak_util": 0, "peak_mem": 0}
     stop = threading.Event()
@@ -133,6 +149,11 @@ def main():
     print("-" * len(header))
 
     for m in models:
+        # Unload everything first so MEM reflects only this model
+        for other in models:
+            unload(other)
+        time.sleep(UNLOAD_SETTLE_SEC)
+
         try:
             runs = [run_one(m, args.prompt) for _ in range(args.runs)]
         except Exception as e:
@@ -141,6 +162,10 @@ def main():
         avg = {k: sum(r[k] for r in runs) / len(runs) for k in runs[0]}
         print(f"{m:<24}{avg['tokens']:>8.0f}{avg['tok_s']:>8.1f}{avg['ttft_ms']:>10.0f}"
               f"{avg['total_s']:>10.2f}{avg['gpu_pct']:>8.0f}{avg['mem_mib']:>12.0f}")
+
+    # Final cleanup so no model is left warm
+    for m in models:
+        unload(m)
 
 
 if __name__ == "__main__":

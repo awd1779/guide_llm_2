@@ -3,10 +3,10 @@
 #
 # Usage:
 #   bash setup_ollama.sh                         # default: 2b-q8
-#   bash setup_ollama.sh all                     # all four variants
+#   bash setup_ollama.sh all                     # all six variants
 #   bash setup_ollama.sh 2b-q4 2b-q8 4b-q4       # specific variants
 #
-# Variants: 2b-q4, 2b-q8, 2b-f16, 4b-q4
+# Variants: 2b-q4, 2b-q8, 2b-f16, 4b-q4, 4b-q8, 4b-f16
 #
 # After setup:
 #   ollama serve &
@@ -23,6 +23,8 @@ declare -A VARIANTS=(
     ["2b-q8"]="SMSong/guide-llm-2b-q8|qwen3.5-2b-toolcall-q8.gguf"
     ["2b-f16"]="SMSong/guide-llm-2b-f16|qwen3.5-2b-toolcall-f16.gguf"
     ["4b-q4"]="SMSong/guide-llm-4b-q4|qwen3.5-4b-toolcall-q4_k_m.gguf"
+    ["4b-q8"]="SMSong/guide-llm-4b-q8|qwen3.5-4b-toolcall-q8.gguf"
+    ["4b-f16"]="SMSong/guide-llm-4b-f16|qwen3.5-4b-toolcall-f16.gguf"
 )
 
 # Parse args
